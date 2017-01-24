@@ -32,6 +32,15 @@ module Dumpable
     end
 
     private
+
+    def apply_id_padding(object_id)
+      if object_id.class == UUIDTools::UUID
+        object_id.to_s + @id_padding.to_s
+      else
+        object_id + @id_padding
+      end
+    end
+
     def recursive_dump(object, dumps)
       if dumps.nil?
 
@@ -45,15 +54,16 @@ module Dumpable
           Array(object.send(key)).each { |child| recursive_dump(child, value) }
         end
       elsif dumps.is_a?(Symbol) || dumps.is_a?(String)
+
         Array(object.send(dumps)).each do |child_object|
-          reflection = object.class.reflections[dumps.to_sym]
+          reflection = object.class.reflect_on_association(dumps.to_sym)
           if reflection.macro == :belongs_to
-            object.send("#{reflection.association_foreign_key}=", object.id + @id_padding)
+            object.send("#{reflection.association_foreign_key}=", apply_id_padding(object.id))
           elsif [:has_many, :has_one].include? reflection.macro
             if reflection.respond_to?(:foreign_key)
-              child_object.send("#{reflection.foreign_key}=", object.id + @id_padding)
+              child_object.send("#{reflection.foreign_key}=", apply_id_padding(object.id))
             else
-              child_object.send("#{reflection.primary_key_name}=", object.id + @id_padding)
+              child_object.send("#{reflection.primary_key_name}=", apply_id_padding(object.id))
             end
           end
           @lines << generate_insert_query(child_object)
@@ -66,7 +76,9 @@ module Dumpable
       skip_columns = Array(@options[:skip_columns] || (object.class.respond_to?(:dumpable_options) && object.class.dumpable_options[:skip_columns])).map(&:to_s)
       cloned_attributes = object.attributes.clone
       return nil unless cloned_attributes["id"].present?
-      cloned_attributes["id"] += @id_padding
+
+      cloned_attributes['id'] = apply_id_padding(cloned_attributes['id'])
+
       key_values = cloned_attributes.collect do |key,value|
         [key, dump_value_string(value)] unless skip_columns.include?(key.to_s)
       end.compact
@@ -99,3 +111,4 @@ module Dumpable
     end
   end
 end
+
