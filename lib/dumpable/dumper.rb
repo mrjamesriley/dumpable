@@ -35,7 +35,7 @@ module Dumpable
 
     def apply_id_padding(object_id)
       if object_id.class == UUIDTools::UUID
-        object_id.to_s + @id_padding.to_s
+        object_id.to_s
       else
         object_id + @id_padding
       end
@@ -71,6 +71,16 @@ module Dumpable
       end
     end
 
+    def prepare_uuids(attributes, object)
+      attributes.collect do |attr, value|
+        if object.send(attr.to_sym).class == UUIDTools::UUID
+          [attr, "x#{value.to_s.gsub('-', '')}"]
+        else
+          [attr, value]
+        end
+      end
+    end
+
     # http://invisipunk.blogspot.com/2008/04/activerecord-raw-insertupdate.html
     def generate_insert_query(object)
       skip_columns = Array(@options[:skip_columns] || (object.class.respond_to?(:dumpable_options) && object.class.dumpable_options[:skip_columns])).map(&:to_s)
@@ -82,6 +92,9 @@ module Dumpable
       key_values = cloned_attributes.collect do |key,value|
         [key, dump_value_string(value)] unless skip_columns.include?(key.to_s)
       end.compact
+
+      key_values = prepare_uuids key_values, object
+
       keys = key_values.collect{ |item| "`#{item[0]}`" }.join(", ")
       values = key_values.collect{ |item| item[1].to_s }.join(", ")
 
@@ -92,6 +105,8 @@ module Dumpable
     def dump_value_string(value)
       case value.class.to_s
         when "Time"
+          "'#{value.strftime("%Y-%m-%d %H:%M:%S")}'"
+        when "ActiveSupport::TimeWithZone"
           "'#{value.strftime("%Y-%m-%d %H:%M:%S")}'"
         when "NilClass"
           "NULL"
